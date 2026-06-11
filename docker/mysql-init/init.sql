@@ -13,17 +13,21 @@ CREATE TABLE IF NOT EXISTS admin (
 CREATE TABLE IF NOT EXISTS posts (
     id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
     title VARCHAR(255) NOT NULL,
-    slug VARCHAR(255) NOT NULL UNIQUE,
+    slug VARCHAR(255) NOT NULL,
     excerpt TEXT,
-    content LONGTEXT NOT NULL,
+    content LONGTEXT,
     cover_image VARCHAR(512) DEFAULT NULL,
+    language VARCHAR(5) NOT NULL DEFAULT 'en',
+    post_type ENUM('markdown', 'html') NOT NULL DEFAULT 'markdown',
+    custom_dir VARCHAR(255) DEFAULT NULL,
     status ENUM('draft', 'published') NOT NULL DEFAULT 'draft',
     published_at TIMESTAMP NULL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    UNIQUE INDEX idx_slug_lang (slug, language),
     INDEX idx_status (status),
     INDEX idx_published_at (published_at),
-    INDEX idx_slug (slug)
+    INDEX idx_language (language)
 ) ENGINE=InnoDB;
 
 CREATE TABLE IF NOT EXISTS images (
@@ -41,5 +45,9 @@ CREATE TABLE IF NOT EXISTS settings (
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
 ) ENGINE=InnoDB;
 
-INSERT INTO settings (setting_key, setting_value) VALUES ('blog_title', 'Miha''s Blog of Philosophy') ON DUPLICATE KEY UPDATE setting_value = setting_value;
-INSERT INTO settings (setting_key, setting_value) VALUES ('blog_tagline', 'Contemplations on existence, reason, and the human condition') ON DUPLICATE KEY UPDATE setting_value = setting_value;
+INSERT INTO settings (setting_key, setting_value) VALUES ('blog_title_en', 'Miha''s Blog of Philosophy') ON DUPLICATE KEY UPDATE setting_value = setting_value;
+INSERT INTO settings (setting_key, setting_value) VALUES ('blog_tagline_en', 'Contemplations on existence, reason, and the human condition') ON DUPLICATE KEY UPDATE setting_value = setting_value;
+INSERT INTO settings (setting_key, setting_value) VALUES ('blog_title_sl', 'Mihov blog o filozofiji') ON DUPLICATE KEY UPDATE setting_value = setting_value;
+INSERT INTO settings (setting_key, setting_value) VALUES ('blog_tagline_sl', 'Razmišljanja o obstoju, razumu in človeškem stanju') ON DUPLICATE KEY UPDATE setting_value = setting_value;
+INSERT INTO settings (setting_key, setting_value) VALUES ('default_language', 'en') ON DUPLICATE KEY UPDATE setting_value = setting_value;
+INSERT INTO settings (setting_key, setting_value) VALUES ('available_languages', 'en,sl') ON DUPLICATE KEY UPDATE setting_value = setting_value;

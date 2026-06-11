@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 require_once __DIR__ . '/../../includes/auth.php';
 require_once __DIR__ . '/../../includes/functions.php';
+require_once __DIR__ . '/../../includes/translations.php';
 
 requireAdmin();
 
@@ -44,26 +45,48 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             exit;
         }
 
+        if ($action === 'upload_custom_files') {
+            header('Content-Type: application/json');
+            if (isset($_FILES['custom_files']) && $_FILES['custom_files']['error'][0] === UPLOAD_ERR_OK) {
+                $result = uploadCustomPostFiles($_FILES);
+                if ($result) {
+                    echo json_encode(['success' => true, 'dir' => $result['dir'], 'files' => $result['files']]);
+                } else {
+                    http_response_code(400);
+                    echo json_encode(['success' => false, 'error' => 'Upload failed.']);
+                }
+            } else {
+                http_response_code(400);
+                echo json_encode(['success' => false, 'error' => 'No files uploaded.']);
+            }
+            exit;
+        }
+
         $title = trim($_POST['title'] ?? '');
         $content = $_POST['content'] ?? '';
         $excerpt = trim($_POST['excerpt'] ?? '');
         $coverImage = trim($_POST['cover_image'] ?? '') ?: null;
         $status = $_POST['status'] ?? 'draft';
         $customSlug = trim($_POST['custom_slug'] ?? '') ?: null;
+        $language = $_POST['language'] ?? 'en';
+        $postType = $_POST['post_type'] ?? 'markdown';
+        $customDir = trim($_POST['custom_dir'] ?? '') ?: null;
         $editId = (int)($_POST['edit_id'] ?? 0);
 
         if (empty($title)) {
             $error = 'Title is required.';
-        } elseif (empty($content)) {
+        } elseif ($postType === 'markdown' && empty($content)) {
             $error = 'Content is required.';
+        } elseif ($postType === 'html' && empty($customDir)) {
+            $error = 'Custom files are required for HTML posts.';
         } else {
             if ($editId > 0) {
-                updatePost($editId, $title, $content, $excerpt, $coverImage, $status, $customSlug);
+                updatePost($editId, $title, $content, $excerpt, $coverImage, $status, $language, $postType, $customSlug, $customDir);
                 $success = 'Essay updated successfully.';
                 $post = getPostById($editId);
                 $isEditing = true;
             } else {
-                $newId = createPost($title, $content, $excerpt, $coverImage, $status, $customSlug);
+                $newId = createPost($title, $content, $excerpt, $coverImage, $status, $language, $postType, $customSlug, $customDir);
                 header('Location: /admin/editor.php?id=' . $newId . '&saved=1');
                 exit;
             }
@@ -83,13 +106,15 @@ if (isset($_GET['saved'])) {
 }
 
 $csrfToken = generateCsrfToken();
+$adminLang = getCurrentLanguage();
+$pageTitle = $isEditing ? t('admin_edit_essay') : t('admin_new_essay');
 ?>
 <!DOCTYPE html>
-<html lang="en">
+<html lang="<?= e($adminLang) ?>">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title><?= $isEditing ? 'Edit' : 'New' ?> Essay — Admin</title>
+    <title><?= e($pageTitle) ?> — Admin</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,400;0,600;1,400&family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
@@ -99,21 +124,21 @@ $csrfToken = generateCsrfToken();
     <div class="admin-layout">
         <aside class="admin-sidebar">
             <div class="admin-sidebar-brand">
-                <h2>Admin Panel</h2>
+                <h2><?= t('admin_panel') ?></h2>
                 <p>Philosophy Blog</p>
             </div>
             <ul class="admin-nav">
-                <li><a href="/admin/">Dashboard</a></li>
-                <li><a href="/admin/editor.php" class="active">New Essay</a></li>
-                <li><a href="/admin/settings.php">Settings</a></li>
-                <li><a href="/" target="_blank">View Blog</a></li>
-                <li><a href="/admin/?action=logout">Logout</a></li>
+                <li><a href="/admin/"><?= t('admin_dashboard') ?></a></li>
+                <li><a href="/admin/editor.php" class="active"><?= t('admin_new_essay') ?></a></li>
+                <li><a href="/admin/settings.php"><?= t('admin_settings') ?></a></li>
+                <li><a href="/?lang=<?= e($adminLang) ?>" target="_blank"><?= t('admin_view_blog') ?></a></li>
+                <li><a href="/admin/?action=logout"><?= t('admin_logout') ?></a></li>
             </ul>
         </aside>
         <div class="admin-content">
             <div class="admin-header">
-                <h1><?= $isEditing ? 'Edit Essay' : 'New Essay' ?></h1>
-                <a href="/admin/" class="btn btn-secondary">&larr; Back</a>
+                <h1><?= $isEditing ? t('admin_edit_essay') : t('admin_new_essay') ?></h1>
+                <a href="/admin/" class="btn btn-secondary">&larr; <?= t('admin_dashboard') ?></a>
             </div>
 
             <?php if ($error): ?>
@@ -126,6 +151,7 @@ $csrfToken = generateCsrfToken();
             <form method="post" action="/admin/editor.php" id="editorForm" enctype="multipart/form-data">
                 <input type="hidden" name="csrf_token" value="<?= e($csrfToken) ?>">
                 <input type="hidden" name="action" value="save">
+                <input type="hidden" name="custom_dir" id="customDirInput" value="<?= e($post['custom_dir'] ?? '') ?>">
                 <?php if ($isEditing && $post): ?>
                     <input type="hidden" name="edit_id" value="<?= $post['id'] ?>">
                 <?php endif; ?>
@@ -133,19 +159,19 @@ $csrfToken = generateCsrfToken();
                 <div style="display: grid; grid-template-columns: 1fr 300px; gap: 24px; align-items: start;">
                     <div>
                         <div class="form-group">
-                            <label for="title">Title</label>
-                            <input type="text" id="title" name="title" required value="<?= e($post['title'] ?? '') ?>" placeholder="Enter essay title...">
+                            <label for="title"><?= t('admin_title') ?></label>
+                            <input type="text" id="title" name="title" required value="<?= e($post['title'] ?? '') ?>" placeholder="<?= t('admin_title') ?>...">
                         </div>
 
                         <div class="form-group">
-                            <label for="excerpt">Excerpt (short summary)</label>
-                            <textarea id="excerpt" name="excerpt" rows="2" placeholder="A brief summary shown on the card..."><?= e($post['excerpt'] ?? '') ?></textarea>
+                            <label for="excerpt"><?= t('admin_excerpt') ?></label>
+                            <textarea id="excerpt" name="excerpt" rows="2" placeholder="<?= t('admin_excerpt_placeholder') ?>"><?= e($post['excerpt'] ?? '') ?></textarea>
                         </div>
 
-                        <div class="editor-container">
+                        <div class="editor-container" id="markdownEditor">
                             <div class="editor-tabs">
-                                <button type="button" class="editor-tab active" onclick="switchEditorTab('write', this)">Write</button>
-                                <button type="button" class="editor-tab" onclick="switchEditorTab('preview', this)">Preview</button>
+                                <button type="button" class="editor-tab active" onclick="switchEditorTab('write', this)"><?= t('admin_write') ?></button>
+                                <button type="button" class="editor-tab" onclick="switchEditorTab('preview', this)"><?= t('admin_preview') ?></button>
                             </div>
 
                             <div class="editor-toolbar" id="editorToolbar">
@@ -167,27 +193,64 @@ $csrfToken = generateCsrfToken();
                                 <button type="button" title="Code" onclick="insertMarkdown('code')">&lt;/&gt;</button>
                             </div>
 
-                            <textarea class="editor-textarea" id="content" name="content" placeholder="Write your essay in Markdown..."><?= e($post['content'] ?? '') ?></textarea>
+                            <textarea class="editor-textarea" id="content" name="content" placeholder="<?= t('admin_content_placeholder') ?>"><?= e($post['content'] ?? '') ?></textarea>
                             <div class="editor-preview" id="editorPreview"></div>
+                        </div>
+
+                        <div id="htmlUploadArea" style="display: none;">
+                            <div style="background: var(--color-surface); padding: 24px; border-radius: var(--radius-lg); border: 1px solid var(--color-border-light);">
+                                <h3 style="font-family: var(--font-serif); margin-bottom: 16px;"><?= t('admin_upload_files') ?></h3>
+                                <p style="font-size: 0.85rem; color: var(--color-text-muted); margin-bottom: 16px;">
+                                    <?= t('admin_html_files') ?>, <?= t('admin_css_files') ?>, <?= t('admin_js_files') ?>, <?= t('admin_zip_file') ?>
+                                </p>
+                                <div class="cover-upload" id="customFilesUpload">
+                                    <p style="color: var(--color-text-muted); font-size: 0.85rem;">
+                                        <?= t('admin_upload_files') ?> (HTML, CSS, JS, ZIP)
+                                    </p>
+                                    <input type="file" name="custom_files[]" id="customFilesInput" accept=".html,.htm,.css,.js,.zip" multiple>
+                                </div>
+                                <div id="customFilesStatus" style="margin-top: 12px;"></div>
+                                <div class="form-group" style="margin-top: 16px;">
+                                    <label for="mainFile"><?= t('admin_main_file') ?></label>
+                                    <input type="text" id="mainFile" name="main_file" value="<?= e($post['content'] ?? 'index.html') ?>" placeholder="index.html">
+                                    <small style="color: var(--color-text-muted); font-size: 0.8rem;"><?= t('admin_main_file_desc') ?></small>
+                                </div>
+                            </div>
                         </div>
                     </div>
 
                     <div>
                         <div class="form-group">
-                            <label for="status">Status</label>
-                            <select id="status" name="status">
-                                <option value="draft" <?= ($post['status'] ?? 'draft') === 'draft' ? 'selected' : '' ?>>Draft</option>
-                                <option value="published" <?= ($post['status'] ?? '') === 'published' ? 'selected' : '' ?>>Published</option>
+                            <label for="language"><?= t('admin_language') ?></label>
+                            <select id="language" name="language">
+                                <option value="en" <?= ($post['language'] ?? 'en') === 'en' ? 'selected' : '' ?>>English</option>
+                                <option value="sl" <?= ($post['language'] ?? '') === 'sl' ? 'selected' : '' ?>>Slovenščina</option>
                             </select>
                         </div>
 
                         <div class="form-group">
-                            <label for="custom_slug">Custom Slug (optional)</label>
+                            <label for="post_type"><?= t('admin_post_type') ?></label>
+                            <select id="post_type" name="post_type" onchange="switchPostType(this.value)">
+                                <option value="markdown" <?= ($post['post_type'] ?? 'markdown') === 'markdown' ? 'selected' : '' ?>><?= t('admin_type_markdown') ?></option>
+                                <option value="html" <?= ($post['post_type'] ?? '') === 'html' ? 'selected' : '' ?>><?= t('admin_type_html') ?></option>
+                            </select>
+                        </div>
+
+                        <div class="form-group">
+                            <label for="status"><?= t('admin_status_label') ?></label>
+                            <select id="status" name="status">
+                                <option value="draft" <?= ($post['status'] ?? 'draft') === 'draft' ? 'selected' : '' ?>><?= t('admin_draft') ?></option>
+                                <option value="published" <?= ($post['status'] ?? '') === 'published' ? 'selected' : '' ?>><?= t('admin_published') ?></option>
+                            </select>
+                        </div>
+
+                        <div class="form-group">
+                            <label for="custom_slug"><?= t('admin_custom_slug') ?></label>
                             <input type="text" id="custom_slug" name="custom_slug" value="<?= e($post['slug'] ?? '') ?>" placeholder="auto-generated-from-title">
                         </div>
 
                         <div class="form-group">
-                            <label>Cover Image</label>
+                            <label><?= t('admin_cover_image') ?></label>
                             <div id="coverUploadArea">
                                 <?php if (!empty($post['cover_image'])): ?>
                                     <div class="cover-preview" id="coverPreview">
@@ -197,7 +260,7 @@ $csrfToken = generateCsrfToken();
                                     <input type="hidden" name="cover_image" id="coverImageInput" value="<?= e($post['cover_image']) ?>">
                                 <?php else: ?>
                                     <div class="cover-upload" id="coverUpload">
-                                        <p style="color: var(--color-text-muted); font-size: 0.85rem;">Click or drop to upload cover image</p>
+                                        <p style="color: var(--color-text-muted); font-size: 0.85rem;"><?= t('admin_upload_cover') ?></p>
                                         <input type="file" accept="image/jpeg,image/png,image/gif,image/webp" onchange="uploadCover(this)">
                                     </div>
                                     <input type="hidden" name="cover_image" id="coverImageInput" value="">
@@ -207,17 +270,17 @@ $csrfToken = generateCsrfToken();
 
                         <div class="form-actions" style="display: flex; gap: 8px;">
                             <button type="submit" class="btn btn-primary" style="flex: 1; justify-content: center;">
-                                <?= $isEditing ? 'Update Essay' : 'Create Essay' ?>
+                                <?= $isEditing ? t('admin_update') : t('admin_create') ?>
                             </button>
                         </div>
 
                         <?php if ($isEditing && $post): ?>
                             <div style="margin-top: 12px;">
-                                <form method="post" action="/admin/editor.php" onsubmit="return confirm('Delete this essay permanently?');">
+                                <form method="post" action="/admin/editor.php" onsubmit="return confirm('<?= t('admin_delete_confirm') ?>');">
                                     <input type="hidden" name="csrf_token" value="<?= e($csrfToken) ?>">
                                     <input type="hidden" name="action" value="delete">
                                     <input type="hidden" name="id" value="<?= $post['id'] ?>">
-                                    <button type="submit" class="btn btn-danger btn-sm" style="width: 100%; justify-content: center;">Delete Essay</button>
+                                    <button type="submit" class="btn btn-danger btn-sm" style="width: 100%; justify-content: center;"><?= t('admin_delete') ?></button>
                                 </form>
                             </div>
                         <?php endif; ?>
@@ -229,23 +292,40 @@ $csrfToken = generateCsrfToken();
 
     <div class="image-modal" id="imageModal">
         <div class="image-modal-content">
-            <h3>Insert Image</h3>
+            <h3><?= t('admin_insert_image') ?></h3>
             <div class="form-group">
-                <label>Upload Image</label>
+                <label><?= t('admin_upload_image') ?></label>
                 <input type="file" id="imageUploadInput" accept="image/jpeg,image/png,image/gif,image/webp">
             </div>
             <div class="form-group">
-                <label for="imageAltText">Alt Text</label>
-                <input type="text" id="imageAltText" placeholder="Describe the image...">
+                <label for="imageAltText"><?= t('admin_alt_text') ?></label>
+                <input type="text" id="imageAltText" placeholder="<?= t('admin_alt_placeholder') ?>">
             </div>
             <div id="imageUploadStatus" style="margin-bottom: 12px;"></div>
             <div style="display: flex; gap: 8px; justify-content: flex-end;">
-                <button type="button" class="btn btn-secondary" onclick="closeImageModal()">Cancel</button>
-                <button type="button" class="btn btn-primary" onclick="insertImage()">Insert</button>
+                <button type="button" class="btn btn-secondary" onclick="closeImageModal()"><?= t('admin_cancel') ?></button>
+                <button type="button" class="btn btn-primary" onclick="insertImage()"><?= t('admin_insert') ?></button>
             </div>
         </div>
     </div>
 
+    <script>
+        function switchPostType(type) {
+            var mdEditor = document.getElementById('markdownEditor');
+            var htmlUpload = document.getElementById('htmlUploadArea');
+            if (type === 'html') {
+                mdEditor.style.display = 'none';
+                htmlUpload.style.display = 'block';
+            } else {
+                mdEditor.style.display = 'block';
+                htmlUpload.style.display = 'none';
+            }
+        }
+        document.addEventListener('DOMContentLoaded', function() {
+            var postType = document.getElementById('post_type').value;
+            switchPostType(postType);
+        });
+    </script>
     <script src="/js/app.js"></script>
 </body>
 </html>

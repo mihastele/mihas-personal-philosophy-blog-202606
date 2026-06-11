@@ -9,6 +9,7 @@ services:
       - "${APP_PORT:-8080}:80"
     volumes:
       - uploads_data:/var/www/html/uploads
+      - custom_posts_data:/var/www/html/custom_posts
       - ./.env:/var/www/.env:ro
     depends_on:
       mysql:
@@ -41,6 +42,8 @@ volumes:
   mysql_data:
     driver: local
   uploads_data:
+    driver: local
+  custom_posts_data:
     driver: local
 
 networks:

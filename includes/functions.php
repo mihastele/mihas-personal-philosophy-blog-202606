@@ -23,13 +23,18 @@ function setSetting(string $key, string $value): bool
     return $stmt->execute([$key, $value]);
 }
 
-function getPublishedPosts(int $limit = 20, int $offset = 0, string $search = ''): array
+function getPublishedPosts(int $limit = 20, int $offset = 0, string $search = '', string $language = ''): array
 {
     $db = getDB();
 
-    $sql = 'SELECT id, title, slug, excerpt, cover_image, published_at, created_at
+    $sql = 'SELECT id, title, slug, excerpt, cover_image, language, post_type, published_at, created_at
             FROM posts WHERE status = ?';
     $params = ['published'];
+
+    if ($language !== '') {
+        $sql .= ' AND language = ?';
+        $params[] = $language;
+    }
 
     if ($search !== '') {
         $sql .= ' AND (title LIKE ? OR excerpt LIKE ?)';
@@ -47,11 +52,16 @@ function getPublishedPosts(int $limit = 20, int $offset = 0, string $search = ''
     return $stmt->fetchAll();
 }
 
-function countPublishedPosts(string $search = ''): int
+function countPublishedPosts(string $search = '', string $language = ''): int
 {
     $db = getDB();
     $sql = 'SELECT COUNT(*) FROM posts WHERE status = ?';
     $params = ['published'];
+
+    if ($language !== '') {
+        $sql .= ' AND language = ?';
+        $params[] = $language;
+    }
 
     if ($search !== '') {
         $sql .= ' AND (title LIKE ? OR excerpt LIKE ?)';
@@ -65,13 +75,22 @@ function countPublishedPosts(string $search = ''): int
     return (int) $stmt->fetchColumn();
 }
 
-function getPostBySlug(string $slug): ?array
+function getPostBySlug(string $slug, string $language = ''): ?array
 {
     $db = getDB();
-    $stmt = $db->prepare(
-        'SELECT * FROM posts WHERE slug = ? AND status = ? LIMIT 1'
-    );
-    $stmt->execute([$slug, 'published']);
+
+    if ($language !== '') {
+        $stmt = $db->prepare(
+            'SELECT * FROM posts WHERE slug = ? AND language = ? AND status = ? LIMIT 1'
+        );
+        $stmt->execute([$slug, $language, 'published']);
+    } else {
+        $stmt = $db->prepare(
+            'SELECT * FROM posts WHERE slug = ? AND status = ? LIMIT 1'
+        );
+        $stmt->execute([$slug, 'published']);
+    }
+
     $post = $stmt->fetch();
     return $post ?: null;
 }
@@ -85,13 +104,24 @@ function getPostById(int $id): ?array
     return $post ?: null;
 }
 
-function getAllPosts(int $limit = 50, int $offset = 0): array
+function getAllPosts(int $limit = 50, int $offset = 0, string $language = ''): array
 {
     $db = getDB();
-    $stmt = $db->prepare(
-        'SELECT * FROM posts ORDER BY created_at DESC LIMIT ? OFFSET ?'
-    );
-    $stmt->execute([$limit, $offset]);
+
+    $sql = 'SELECT * FROM posts';
+    $params = [];
+
+    if ($language !== '') {
+        $sql .= ' WHERE language = ?';
+        $params[] = $language;
+    }
+
+    $sql .= ' ORDER BY created_at DESC LIMIT ? OFFSET ?';
+    $params[] = $limit;
+    $params[] = $offset;
+
+    $stmt = $db->prepare($sql);
+    $stmt->execute($params);
     return $stmt->fetchAll();
 }
 
@@ -104,15 +134,15 @@ function generateSlug(string $title): string
     return $slug ?: 'untitled';
 }
 
-function uniqueSlug(string $slug, ?int $excludeId = null): string
+function uniqueSlug(string $slug, string $language = 'en', ?int $excludeId = null): string
 {
     $db = getDB();
     $original = $slug;
     $counter = 1;
 
     while (true) {
-        $sql = 'SELECT id FROM posts WHERE slug = ?';
-        $params = [$slug];
+        $sql = 'SELECT id FROM posts WHERE slug = ? AND language = ?';
+        $params = [$slug, $language];
 
         if ($excludeId !== null) {
             $sql .= ' AND id != ?';
@@ -132,25 +162,25 @@ function uniqueSlug(string $slug, ?int $excludeId = null): string
     }
 }
 
-function createPost(string $title, string $content, string $excerpt, ?string $coverImage, string $status, ?string $customSlug = null): int
+function createPost(string $title, string $content, string $excerpt, ?string $coverImage, string $status, string $language = 'en', string $postType = 'markdown', ?string $customSlug = null, ?string $customDir = null): int
 {
     $db = getDB();
 
     $slug = $customSlug ? generateSlug($customSlug) : generateSlug($title);
-    $slug = uniqueSlug($slug);
+    $slug = uniqueSlug($slug, $language);
 
     $publishedAt = ($status === 'published') ? date('Y-m-d H:i:s') : null;
 
     $stmt = $db->prepare(
-        'INSERT INTO posts (title, slug, excerpt, content, cover_image, status, published_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?)'
+        'INSERT INTO posts (title, slug, excerpt, content, cover_image, language, post_type, custom_dir, status, published_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
     );
-    $stmt->execute([$title, $slug, $excerpt, $content, $coverImage, $status, $publishedAt]);
+    $stmt->execute([$title, $slug, $excerpt, $content, $coverImage, $language, $postType, $customDir, $status, $publishedAt]);
 
     return (int) $db->lastInsertId();
 }
 
-function updatePost(int $id, string $title, string $content, string $excerpt, ?string $coverImage, string $status, ?string $customSlug = null): bool
+function updatePost(int $id, string $title, string $content, string $excerpt, ?string $coverImage, string $status, string $language = 'en', string $postType = 'markdown', ?string $customSlug = null, ?string $customDir = null): bool
 {
     $db = getDB();
     $existing = getPostById($id);
@@ -160,7 +190,7 @@ function updatePost(int $id, string $title, string $content, string $excerpt, ?s
     }
 
     $slug = $customSlug ? generateSlug($customSlug) : generateSlug($title);
-    $slug = uniqueSlug($slug, $id);
+    $slug = uniqueSlug($slug, $language, $id);
 
     $publishedAt = $existing['published_at'];
     if ($status === 'published' && empty($publishedAt)) {
@@ -168,16 +198,36 @@ function updatePost(int $id, string $title, string $content, string $excerpt, ?s
     }
 
     $stmt = $db->prepare(
-        'UPDATE posts SET title = ?, slug = ?, excerpt = ?, content = ?, cover_image = ?, status = ?, published_at = ?
+        'UPDATE posts SET title = ?, slug = ?, excerpt = ?, content = ?, cover_image = ?, language = ?, post_type = ?, custom_dir = ?, status = ?, published_at = ?
          WHERE id = ?'
     );
 
-    return $stmt->execute([$title, $slug, $excerpt, $content, $coverImage, $status, $publishedAt, $id]);
+    return $stmt->execute([$title, $slug, $excerpt, $content, $coverImage, $language, $postType, $customDir, $status, $publishedAt, $id]);
 }
 
 function deletePost(int $id): bool
 {
     $db = getDB();
+    $post = getPostById($id);
+
+    if ($post && $post['post_type'] === 'html' && !empty($post['custom_dir'])) {
+        $dir = __DIR__ . '/../public/custom_posts/' . $post['custom_dir'];
+        if (is_dir($dir)) {
+            $files = new RecursiveIteratorIterator(
+                new RecursiveDirectoryIterator($dir, RecursiveDirectoryIterator::SKIP_DOTS),
+                RecursiveIteratorIterator::CHILD_FIRST
+            );
+            foreach ($files as $file) {
+                if ($file->isDir()) {
+                    rmdir($file->getRealPath());
+                } else {
+                    unlink($file->getRealPath());
+                }
+            }
+            rmdir($dir);
+        }
+    }
+
     $stmt = $db->prepare('DELETE FROM posts WHERE id = ?');
     return $stmt->execute([$id]);
 }
@@ -225,6 +275,68 @@ function uploadImage(array $file): ?array
         'filename' => $filename,
         'url' => UPLOAD_URL . $filename,
     ];
+}
+
+function uploadCustomPostFiles(array $files): ?array
+{
+    $allowedTypes = [
+        'text/html' => 'html',
+        'text/css' => 'css',
+        'application/javascript' => 'js',
+        'text/javascript' => 'js',
+        'application/zip' => 'zip',
+        'application/x-zip-compressed' => 'zip',
+    ];
+
+    $dirName = bin2hex(random_bytes(16));
+    $baseDir = __DIR__ . '/../public/custom_posts/' . $dirName;
+
+    if (!mkdir($baseDir, 0755, true)) {
+        return null;
+    }
+
+    $uploadedFiles = [];
+
+    if (isset($files['custom_files'])) {
+        $customFiles = $files['custom_files'];
+
+        if (is_array($customFiles['name'])) {
+            foreach ($customFiles['name'] as $i => $name) {
+                if ($customFiles['error'][$i] !== UPLOAD_ERR_OK) continue;
+
+                $type = $customFiles['type'][$i];
+                $tmpName = $customFiles['tmp_name'][$i];
+                $size = $customFiles['size'][$i];
+
+                if (!isset($allowedTypes[$type])) continue;
+                if ($size > 50 * 1024 * 1024) continue;
+
+                $ext = $allowedTypes[$type];
+
+                if ($ext === 'zip') {
+                    $zip = new ZipArchive;
+                    if ($zip->open($tmpName) === true) {
+                        $zip->extractTo($baseDir);
+                        $zip->close();
+                        $uploadedFiles[] = 'zip_extracted';
+                    }
+                } else {
+                    $filename = preg_replace('/[^a-zA-Z0-9._-]/', '_', $name);
+                    $dest = $baseDir . '/' . $filename;
+                    if (move_uploaded_file($tmpName, $dest)) {
+                        $uploadedFiles[] = $filename;
+                    }
+                }
+            }
+        }
+    }
+
+    if (empty($uploadedFiles)) {
+        rmdir($baseDir);
+        return null;
+    }
+
+    return ['dir' => $dirName, 'files' => $uploadedFiles];
 }
 
 function e(string $str): string

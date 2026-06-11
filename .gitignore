@@ -1,6 +1,8 @@
 .env
 public/uploads/*
 !public/uploads/.gitkeep
+public/custom_posts/*
+!public/custom_posts/.gitkeep
 *.log
 .DS_Store
 Thumbs.db

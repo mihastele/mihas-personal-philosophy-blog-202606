@@ -131,6 +131,36 @@ img {
     border-bottom-color: var(--color-accent);
 }
 
+.lang-selector {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 0.85rem;
+    font-weight: 500;
+}
+
+.lang-link {
+    color: var(--color-text-muted);
+    padding: 4px 6px;
+    border-radius: 4px;
+    transition: all var(--transition);
+}
+
+.lang-link:hover {
+    color: var(--color-accent);
+    background: var(--color-bg-alt);
+}
+
+.lang-link.active {
+    color: var(--color-accent);
+    font-weight: 600;
+}
+
+.lang-sep {
+    color: var(--color-text-light);
+    font-size: 0.75rem;
+}
+
 .nav-search-toggle {
     display: flex;
     align-items: center;

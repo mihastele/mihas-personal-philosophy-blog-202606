@@ -3,20 +3,22 @@
 declare(strict_types=1);
 
 require_once __DIR__ . '/../includes/functions.php';
+require_once __DIR__ . '/../includes/translations.php';
 
+$lang = getCurrentLanguage();
 $currentPage = 'home';
 $searchQuery = isset($_GET['search']) ? trim($_GET['search']) : '';
 $page = max(1, (int)($_GET['page'] ?? 1));
 $perPage = 10;
 $offset = ($page - 1) * $perPage;
 
-$totalPosts = countPublishedPosts($searchQuery);
+$totalPosts = countPublishedPosts($searchQuery, $lang);
 $totalPages = max(1, (int) ceil($totalPosts / $perPage));
-$posts = getPublishedPosts($perPage, $offset, $searchQuery);
+$posts = getPublishedPosts($perPage, $offset, $searchQuery, $lang);
 
 $pageTitle = $searchQuery
-    ? "Search: " . $searchQuery . " — " . getSetting('blog_title', "Miha's Blog of Philosophy")
-    : getSetting('blog_title', "Miha's Blog of Philosophy");
+    ? t('search_button') . ': ' . $searchQuery . ' — ' . getLocalizedSetting('blog_title')
+    : getLocalizedSetting('blog_title');
 
 require_once __DIR__ . '/../includes/header.php';
 ?>
@@ -24,8 +26,8 @@ require_once __DIR__ . '/../includes/header.php';
 <?php if ($searchQuery): ?>
     <div class="search-results-header" style="margin-bottom: 32px;">
         <p style="color: var(--color-text-muted); font-size: 0.9rem;">
-            <?= $totalPosts ?> result<?= $totalPosts !== 1 ? 's' : '' ?> for "<strong><?= e($searchQuery) ?></strong>"
-            &mdash; <a href="/">View all essays</a>
+            <?= $totalPosts ?> <?= t('results_for') ?> "<strong><?= e($searchQuery) ?></strong>"
+            &mdash; <a href="/?lang=<?= e($lang) ?>"><?= t('view_all') ?></a>
         </p>
     </div>
 <?php endif; ?>
@@ -33,8 +35,8 @@ require_once __DIR__ . '/../includes/header.php';
 <?php if (empty($posts)): ?>
     <div class="empty-state">
         <div class="empty-state-icon">&#x1F4DC;</div>
-        <h2><?= $searchQuery ? 'No essays found' : 'No essays yet' ?></h2>
-        <p><?= $searchQuery ? 'Try a different search term.' : 'The first contemplation has yet to be written.' ?></p>
+        <h2><?= $searchQuery ? t('no_results') : t('no_posts') ?></h2>
+        <p><?= $searchQuery ? t('no_results_desc') : t('no_posts_desc') ?></p>
     </div>
 <?php else: ?>
     <div class="posts-grid">
@@ -54,13 +56,13 @@ require_once __DIR__ . '/../includes/header.php';
                 <div class="post-card-body">
                     <span class="post-card-date"><?= formatDate($post['published_at'] ?? $post['created_at']) ?></span>
                     <h2 class="post-card-title">
-                        <a href="/post.php?slug=<?= e($post['slug']) ?>"><?= e($post['title']) ?></a>
+                        <a href="/post.php?slug=<?= e($post['slug']) ?>&lang=<?= e($lang) ?>"><?= e($post['title']) ?></a>
                     </h2>
                     <?php if ($post['excerpt']): ?>
                         <p class="post-card-excerpt"><?= e(truncate($post['excerpt'], 180)) ?></p>
                     <?php endif; ?>
-                    <a href="/post.php?slug=<?= e($post['slug']) ?>" class="post-card-link">
-                        Read essay <span>&rarr;</span>
+                    <a href="/post.php?slug=<?= e($post['slug']) ?>&lang=<?= e($lang) ?>" class="post-card-link">
+                        <?= t('read_essay') ?> <span>&rarr;</span>
                     </a>
                 </div>
             </article>
@@ -70,19 +72,19 @@ require_once __DIR__ . '/../includes/header.php';
     <?php if ($totalPages > 1): ?>
         <div class="pagination">
             <?php if ($page > 1): ?>
-                <a href="?page=<?= $page - 1 ?><?= $searchQuery ? '&search=' . urlencode($searchQuery) : '' ?>">&larr; Previous</a>
+                <a href="?lang=<?= e($lang) ?>&page=<?= $page - 1 ?><?= $searchQuery ? '&search=' . urlencode($searchQuery) : '' ?>">&larr; <?= t('previous') ?></a>
             <?php endif; ?>
 
             <?php for ($i = 1; $i <= $totalPages; $i++): ?>
                 <?php if ($i === $page): ?>
                     <span class="current"><?= $i ?></span>
                 <?php else: ?>
-                    <a href="?page=<?= $i ?><?= $searchQuery ? '&search=' . urlencode($searchQuery) : '' ?>"><?= $i ?></a>
+                    <a href="?lang=<?= e($lang) ?>&page=<?= $i ?><?= $searchQuery ? '&search=' . urlencode($searchQuery) : '' ?>"><?= $i ?></a>
                 <?php endif; ?>
             <?php endfor; ?>
 
             <?php if ($page < $totalPages): ?>
-                <a href="?page=<?= $page + 1 ?><?= $searchQuery ? '&search=' . urlencode($searchQuery) : '' ?>">Next &rarr;</a>
+                <a href="?lang=<?= e($lang) ?>&page=<?= $page + 1 ?><?= $searchQuery ? '&search=' . urlencode($searchQuery) : '' ?>"><?= t('next') ?> &rarr;</a>
             <?php endif; ?>
         </div>
     <?php endif; ?>

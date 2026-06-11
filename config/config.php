@@ -38,6 +38,8 @@ define('API_KEY', $env['API_KEY'] ?? '');
 define('SITE_URL', rtrim($env['SITE_URL'] ?? 'http://localhost:8080', '/'));
 define('UPLOAD_DIR', __DIR__ . '/../public/uploads/');
 define('UPLOAD_URL', '/uploads/');
+define('CUSTOM_POSTS_DIR', __DIR__ . '/../public/custom_posts/');
+define('CUSTOM_POSTS_URL', '/custom_posts/');
 
 session_set_cookie_params([
     'lifetime' => 0,

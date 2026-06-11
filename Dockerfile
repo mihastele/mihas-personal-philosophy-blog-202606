@@ -17,10 +17,10 @@ RUN echo "ServerName localhost" >> /etc/apache2/apache2.conf
 
 COPY docker/apache-vhost.conf /etc/apache2/sites-available/000-default.conf
 
-RUN echo "upload_max_filesize = 10M" > /usr/local/etc/php/conf.d/uploads.ini \
-    && echo "post_max_size = 12M" >> /usr/local/etc/php/conf.d/uploads.ini \
-    && echo "memory_limit = 128M" >> /usr/local/etc/php/conf.d/uploads.ini \
-    && echo "max_execution_time = 30" >> /usr/local/etc/php/conf.d/uploads.ini \
+RUN echo "upload_max_filesize = 50M" > /usr/local/etc/php/conf.d/uploads.ini \
+    && echo "post_max_size = 55M" >> /usr/local/etc/php/conf.d/uploads.ini \
+    && echo "memory_limit = 256M" >> /usr/local/etc/php/conf.d/uploads.ini \
+    && echo "max_execution_time = 60" >> /usr/local/etc/php/conf.d/uploads.ini \
     && echo "expose_php = Off" >> /usr/local/etc/php/conf.d/security.ini \
     && echo "display_errors = Off" >> /usr/local/etc/php/conf.d/security.ini \
     && echo "log_errors = On" >> /usr/local/etc/php/conf.d/security.ini
@@ -30,13 +30,14 @@ COPY includes/ /var/www/includes/
 COPY config/ /var/www/config/
 
 RUN mkdir -p /var/www/html/uploads \
-    && chown -R www-data:www-data /var/www/html/uploads \
-    && chmod 755 /var/www/html/uploads
+    && mkdir -p /var/www/html/custom_posts \
+    && chown -R www-data:www-data /var/www/html /var/www/includes /var/www/config
 
-RUN chown -R www-data:www-data /var/www/html /var/www/includes /var/www/config
+COPY docker/entrypoint.sh /usr/local/bin/entrypoint.sh
+RUN chmod +x /usr/local/bin/entrypoint.sh
 
 WORKDIR /var/www/html
 
 EXPOSE 80
 
-CMD ["apache2-foreground"]
+ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]

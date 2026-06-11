@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 require_once __DIR__ . '/../../includes/auth.php';
 require_once __DIR__ . '/../../includes/functions.php';
+require_once __DIR__ . '/../../includes/translations.php';
 
 header('Content-Type: application/json; charset=utf-8');
 header('X-Content-Type-Options: nosniff');
@@ -36,9 +37,20 @@ if ($method === 'POST') {
     $coverImage = trim($input['cover_image'] ?? '') ?: null;
     $status = $input['status'] ?? 'draft';
     $customSlug = trim($input['slug'] ?? '') ?: null;
+    $language = $input['language'] ?? 'en';
+    $postType = $input['post_type'] ?? 'markdown';
+    $customDir = trim($input['custom_dir'] ?? '') ?: null;
 
     if (!in_array($status, ['draft', 'published'], true)) {
         $status = 'draft';
+    }
+
+    if (!in_array($language, ['en', 'sl'], true)) {
+        $language = 'en';
+    }
+
+    if (!in_array($postType, ['markdown', 'html'], true)) {
+        $postType = 'markdown';
     }
 
     if (empty($title)) {
@@ -47,13 +59,13 @@ if ($method === 'POST') {
         exit;
     }
 
-    if (empty($content)) {
+    if ($postType === 'markdown' && empty($content)) {
         http_response_code(400);
         echo json_encode(['error' => 'Content is required.']);
         exit;
     }
 
-    $id = createPost($title, $content, $excerpt, $coverImage, $status, $customSlug);
+    $id = createPost($title, $content, $excerpt, $coverImage, $status, $language, $postType, $customSlug, $customDir);
     $post = getPostById($id);
 
     http_response_code(201);
@@ -63,21 +75,26 @@ if ($method === 'POST') {
             'id' => $post['id'],
             'title' => $post['title'],
             'slug' => $post['slug'],
+            'language' => $post['language'],
+            'post_type' => $post['post_type'],
             'status' => $post['status'],
-            'url' => SITE_URL . '/post.php?slug=' . $post['slug'],
+            'url' => SITE_URL . '/post.php?slug=' . $post['slug'] . '&lang=' . $post['language'],
         ],
     ]);
     exit;
 }
 
 if ($method === 'GET') {
-    $posts = getAllPosts(50, 0);
+    $lang = $_GET['lang'] ?? '';
+    $posts = getAllPosts(50, 0, $lang);
     echo json_encode([
         'posts' => array_map(function ($p) {
             return [
                 'id' => $p['id'],
                 'title' => $p['title'],
                 'slug' => $p['slug'],
+                'language' => $p['language'],
+                'post_type' => $p['post_type'],
                 'status' => $p['status'],
                 'published_at' => $p['published_at'],
                 'created_at' => $p['created_at'],
@@ -110,12 +127,15 @@ if ($method === 'PUT' || $method === 'PATCH') {
     $coverImage = isset($input['cover_image']) ? ($input['cover_image'] ?: null) : $existing['cover_image'];
     $status = $input['status'] ?? $existing['status'];
     $customSlug = isset($input['slug']) ? ($input['slug'] ?: null) : null;
+    $language = $input['language'] ?? $existing['language'];
+    $postType = $input['post_type'] ?? $existing['post_type'];
+    $customDir = isset($input['custom_dir']) ? ($input['custom_dir'] ?: null) : $existing['custom_dir'];
 
     if (!in_array($status, ['draft', 'published'], true)) {
         $status = $existing['status'];
     }
 
-    updatePost($id, $title, $content, $excerpt, $coverImage, $status, $customSlug);
+    updatePost($id, $title, $content, $excerpt, $coverImage, $status, $language, $postType, $customSlug, $customDir);
     $post = getPostById($id);
 
     echo json_encode([
@@ -124,8 +144,10 @@ if ($method === 'PUT' || $method === 'PATCH') {
             'id' => $post['id'],
             'title' => $post['title'],
             'slug' => $post['slug'],
+            'language' => $post['language'],
+            'post_type' => $post['post_type'],
             'status' => $post['status'],
-            'url' => SITE_URL . '/post.php?slug=' . $post['slug'],
+            'url' => SITE_URL . '/post.php?slug=' . $post['slug'] . '&lang=' . $post['language'],
         ],
     ]);
     exit;
