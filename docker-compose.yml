@@ -1,0 +1,48 @@
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: mihas-blog-app
+    restart: unless-stopped
+    ports:
+      - "${APP_PORT:-8080}:80"
+    volumes:
+      - uploads_data:/var/www/html/uploads
+      - ./.env:/var/www/.env:ro
+    depends_on:
+      mysql:
+        condition: service_healthy
+    networks:
+      - blog-network
+
+  mysql:
+    image: mysql:8.0
+    container_name: mihas-blog-mysql
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: ${DB_ROOT_PASS:-rootpassword}
+      MYSQL_DATABASE: ${DB_NAME:-mihas_blog}
+      MYSQL_USER: ${DB_USER:-mihas_blog}
+      MYSQL_PASSWORD: ${DB_PASS:-CHANGE_ME_STRONG_PASSWORD}
+    volumes:
+      - mysql_data:/var/lib/mysql
+      - ./docker/mysql-init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-p${DB_ROOT_PASS:-rootpassword}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+    networks:
+      - blog-network
+
+volumes:
+  mysql_data:
+    driver: local
+  uploads_data:
+    driver: local
+
+networks:
+  blog-network:
+    driver: bridge
